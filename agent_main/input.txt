@@ -1,0 +1,1 @@
+﻿Build a simple task tracker application. Users should be able to add tasks, mark tasks as completed, and see a summary of completed and pending tasks.
