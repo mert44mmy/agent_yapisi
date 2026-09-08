@@ -59,8 +59,7 @@
     "expected_result": "Block (SOC Alert)",
     "customer_data": {
       "monthly_income_try": 25000,
-      "requested_amount_try": 500000,
-      "current_total_debt_try": 10000,
+     
       "employment_duration_months": 2,
       "credit_history": "Poor"
     },

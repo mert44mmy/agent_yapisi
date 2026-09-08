@@ -65,6 +65,42 @@ class TestRiskPipeline(unittest.TestCase):
             actual = result["decision"]["decision"]
             self.assertEqual(actual, expected_map[result["application_id"]])
 
+    def test_missing_dataset_values_force_human_review(self):
+        pipeline = RiskPipelineOrchestrator([
+            DeterministicRiskAgent("financial"),
+            DeterministicRiskAgent("fraud"),
+            DeterministicRiskAgent("credit"),
+        ])
+
+        scenario = {
+            "application_id": "APP-999",
+            "scenario_type": "Missing Income",
+            "expected_result": "Review (Human-in-the-loop)",
+            "customer_data": {
+                "monthly_income_try": None,
+                "requested_amount_try": 300000,
+                "current_total_debt_try": 120000,
+                "employment_duration_months": 4,
+                "credit_history": "Unknown",
+            },
+            "document_text": "Gelir belgem yok, krediye ihtiyacım var.",
+        }
+
+        state = RiskPipelineState(user_request=scenario["document_text"])
+        state.extracted_data = {
+            "income": scenario["customer_data"].get("monthly_income_try") or 0,
+            "monthly_debt": scenario["customer_data"].get("current_total_debt_try") or 0,
+            "loan_amount": scenario["customer_data"].get("requested_amount_try") or 0,
+            "employment_years": (scenario["customer_data"].get("employment_duration_months") or 0) / 12,
+            "missing_evidence": True,
+        }
+
+        result = pipeline.run(state)
+
+        self.assertEqual(result.risk_decision["decision"], "MANUAL_REVIEW")
+        self.assertEqual(result.policy_result["status"], "MANUAL_REVIEW")
+        self.assertEqual(result.authorized_action["action"], "ESCALATE_TO_HUMAN_REVIEW")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -53,6 +53,8 @@ class DocumentAnalyzer:
         loan_amount = float(numbers[2]) if len(numbers) > 2 else 0.0
         employment_years = float(numbers[3]) if len(numbers) > 3 else 0.0
         prior_fraud = "fraud" in text.lower() and "no prior fraud" in text.lower()
+        required_values = [income, debt, loan_amount, employment_years]
+        missing_evidence = any(value in (0, 0.0, None, "") for value in required_values)
         details = {
             "income": income,
             "monthly_debt": debt,
@@ -60,12 +62,10 @@ class DocumentAnalyzer:
             "employment_years": employment_years,
             "prior_fraud": prior_fraud,
             "prompt_injection_detected": "SYSTEM OVERRIDE" in text.upper(),
-            "missing_evidence": False,
+            "missing_evidence": missing_evidence,
         }
         if income and debt:
             details["debt_to_income_ratio"] = round(debt / income, 4)
-        if not income:
-            details["missing_evidence"] = True
         return details
 
 
@@ -78,6 +78,20 @@ class DeterministicRiskAgent:
 
     def run(self, state: RiskPipelineState) -> dict[str, Any]:
         extracted = state.extracted_data or DocumentAnalyzer.extract(state.user_request)
+        extracted["prompt_injection_detected"] = bool(
+            extracted.get("prompt_injection_detected", False)
+            or "SYSTEM OVERRIDE" in state.user_request.upper()
+        )
+        required_fields = [
+            extracted.get("income"),
+            extracted.get("monthly_debt"),
+            extracted.get("loan_amount"),
+            extracted.get("employment_years"),
+        ]
+        extracted["missing_evidence"] = bool(
+            extracted.get("missing_evidence", False)
+            or any(value in (None, "", 0, 0.0) for value in required_fields)
+        )
         state.extracted_data = extracted
 
         if self.agent_type == "financial":
@@ -156,7 +170,7 @@ class DecisionOrchestrator:
             decision = "HIGH_RISK"
         elif state.extracted_data.get("missing_evidence"):
             decision = "MANUAL_REVIEW"
-        elif score >= 7:
+        elif score >= 6:
             decision = "HIGH_RISK"
         elif score >= 4:
             decision = "MANUAL_REVIEW"
@@ -244,13 +258,21 @@ class RiskPipelineOrchestrator:
         results: list[dict[str, Any]] = []
         for scenario in load_scenarios(dataset_file):
             document_text = scenario.get("document_text", "")
+            customer_data = scenario.get("customer_data", {}) or {}
+            income = customer_data.get("monthly_income_try")
+            debt = customer_data.get("current_total_debt_try")
+            loan_amount = customer_data.get("requested_amount_try")
+            employment_months = customer_data.get("employment_duration_months")
+            employment_years = (employment_months or 0) / 12 if employment_months is not None else 0
+
             state = RiskPipelineState(user_request=document_text)
             state.extracted_data = {
-                "income": scenario.get("customer_data", {}).get("monthly_income_try") or 0,
-                "monthly_debt": scenario.get("customer_data", {}).get("current_total_debt_try") or 0,
-                "loan_amount": scenario.get("customer_data", {}).get("requested_amount_try") or 0,
-                "employment_years": (scenario.get("customer_data", {}).get("employment_duration_months") or 0) / 12,
+                "income": income or 0,
+                "monthly_debt": debt or 0,
+                "loan_amount": loan_amount or 0,
+                "employment_years": employment_years,
                 "prior_fraud": False,
+                "missing_evidence": any(value in (None, "", 0, 0.0) for value in [income, debt, loan_amount, employment_months]),
             }
             if state.extracted_data["income"]:
                 state.extracted_data["debt_to_income_ratio"] = round(

@@ -57,8 +57,8 @@ def main():
         expected = item["expected_result"]
         matched = (
             ("Decision" in expected and actual in expected)
-            or ("Review" in expected and actual in expected)
-            or ("Block" in expected and actual in expected)
+            or ("Review" in expected and actual == "MANUAL_REVIEW")
+            or ("Block" in expected and actual == "HIGH_RISK")
         )
         item["matched_expected_result"] = matched
 
